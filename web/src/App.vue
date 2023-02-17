@@ -1,86 +1,71 @@
 <script setup lang="ts">
-import dayjs from 'dayjs'
-import { ClearOutlined, LoadingOutlined, RedoOutlined, KeyOutlined } from '@ant-design/icons-vue'
-import { useStorage } from '@vueuse/core'
-import { completion, creditSummary } from '@/api'
-import Message from './components/message.vue'
+import { RedoOutlined, KeyOutlined } from "@ant-design/icons-vue";
+import { message } from "ant-design-vue";
+import "ant-design-vue/lib/message/style/index.css";
+import { useStorage } from "@vueuse/core";
+import { completion, creditSummary } from "@/api";
 
-const createdAt = dayjs().format('YYYY-MM-DD HH:mm:ss')
-const loadding = ref(false)
-const visible = ref(false)
-const summary = ref({} as any)
+const loading = ref(false);
+const visible = ref(false);
+const pickType = ref("缩减文字");
+const balance = ref(0);
+const pickOptions = reactive(["缩减文字", "聊天"]);
 
-const message = ref('')
-const api_key = useStorage('api_key', '')
-const messages = useStorage('messages', [
-  {
-    username: "chatGPT",
-    msg: "Hello, I'm chatGPT",
-    time: dayjs().format('HH:mm'),
-    type: 0,
-  },
-])
+const inputValue = ref("");
+const answerValue = ref("");
+const api_key = useStorage("api_key", "");
 
 const sendMessage = async () => {
-  loadding.value = true
-  const text = message.value
-  message.value = ""
-  messages.value.push({
-    username: "user",
-    msg: text,
-    time: dayjs().format('HH:mm'),
-    type: 1,
-  })
-  const data: any = await completion(text)
-  console.log(data)
-  const replyMessage = data?.choices ? data.choices[0].text : data?.error?.message
-  messages.value.push({
-    username: "chatGPT",
-    msg: replyMessage,
-    time: dayjs().format('HH:mm'),
-    type: 0,
-  })
-  loadding.value = false
-}
+  console.log(pickType.value);
+  if (!inputValue.value) return;
+  if (!balance.value || balance.value <= 0) {
+    message.error("Please recharge!");
+    return;
+  }
+  loading.value = true;
+  let addedText = '';
+  if(pickType.value === '缩减文字')
+  {
+    addedText = '请将下面文章缩减到五十字以内：';
+  }
+  const text = addedText + inputValue.value;
+  const data: any = await completion(text);
+  const replyMessage = data?.choices
+    ? data.choices[0].text
+    : data?.error?.message;
+  answerValue.value = replyMessage;
+  loading.value = false;
+};
 
-const clearMessages = () => {
-  messages.value = []
-}
+const onMenuChange = (menu: string) => {
+  pickType.value = menu;
+};
 
 const refushCredit = async () => {
-  loadding.value = true
-  summary.value = await creditSummary()
-  loadding.value = false
-}
+  const summary: any = await creditSummary();
+  balance.value = summary.total_available;
+};
 const updateApiKey = () => {
-  visible.value = false
-  window.location.reload()
-}
+  visible.value = false;
+  window.location.reload();
+};
 
 onMounted(async () => {
-  await refushCredit()
-})
+  await refushCredit();
+});
 </script>
 
 <template>
   <div id="layout">
-    <header id="header" class="bg-dark-50 text-white h-10 select-none">
-      <LoadingOutlined v-if="loadding" class="pl-3 cursor-pointer" />
-      <span class="text-size-5 pl-5">chatGPT</span>
-      <span class="pl-3">代码领悟</span>
-      <a-tooltip>
-        <template #title>清除聊天记录</template>
-        <a-popconfirm title="确定清除本地所有聊天记录吗?" ok-text="是的" cancel-text="再想想" @confirm="clearMessages">
-          <ClearOutlined class="pl-3 cursor-pointer" />
-        </a-popconfirm>
-      </a-tooltip>
+    <header id="header" class="flex items-center bg-dark-50 text-white h-10 select-none">
+      <span class="text-size-5 px-5">ChatGPT</span>
 
       <a-tooltip>
         <template #title>自定义API_KEY</template>
         <KeyOutlined class="pl-3 cursor-pointer !text-red-400" @click="visible = true" />
       </a-tooltip>
-      <span class="float-right pr-3 pt-2">
-        当前余额：{{ summary?.total_available }}
+      <span class="absolute right-3">
+        当前余额：{{ balance }}
         <a-tooltip>
           <template #title>刷新余额</template>
           <RedoOutlined @click="refushCredit" />
@@ -88,36 +73,32 @@ onMounted(async () => {
       </span>
     </header>
     <div id="layout-body">
-      <main id="main">
-        <div class="flex-1 relative flex flex-col">
-          <!-- header -->
-          <!-- content -->
-          <div class="flex-1 inset-0 overflow-hidden bg-transparent bg-bottom bg-cover flex flex-col">
-            <!-- dialog -->
-            <div class="flex-1 w-full self-center">
-              <div class="relative px-3 py-1 m-auto flex flex-col">
-                <div class="mx-0 my-1 self-center text-xs text-gray-400">
-                  频道已创建
-                </div>
-                <div class="mx-0 my-1 self-center text-xs text-gray-400">
-                  {{ createdAt }}
-                </div>
-                <Message :message=message v-for="message in messages" :class="message.type ? 'send' : 'replay'" />
-              </div>
-            </div>
+      <main id="main" class="p-10">
+        <a-dropdown :overlayStyle="{ width: '180px' }" placement="bottomLeft" :trigger="['click']">
+          <a-button>{{ pickType }}</a-button>
+          <template #overlay>
+            <a-menu>
+              <a-menu-item v-for="(menuItem, menuI) in pickOptions" :key="menuI" @click="onMenuChange(menuItem)">
+                {{ menuItem }}
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+        <div class="flex items-center mt-4">
+          <div class="flex-1 min-w-md">
+            <a-textarea v-model:value="inputValue" :auto-size="{ minRows: 10, maxRows: 10 }" placeholder="请输入..."
+              class="appearance-none pl-10 py-2 w-full bg-white border border-gray-300 rounded-full text-sm placeholder-gray-800 focus:outline-none focus:border-blue-500 focus:border-blue-500 focus:shadow-outline-blue" />
+          </div>
+          <a-button class="mx-4" type="primary" :loading="loading" :disabled="!inputValue" @click="sendMessage">
+            Go
+          </a-button>
+          <div class="flex-1 bg-light min-w-md">
+            <a-textarea readonly :bordered="false" v-model:value="answerValue" :auto-size="{ minRows: 10, maxRows: 10 }"
+              placeholder=""
+              class="appearance-none pl-10 py-2 w-full bg-white border border-gray-300 rounded-full text-sm placeholder-gray-800 focus:outline-none focus:border-blue-500 focus:border-blue-500 focus:shadow-outline-blue" />
           </div>
         </div>
       </main>
-      <footer id="footer">
-        <div class="relative p-4 w-full overflow-hidden text-gray-600 focus-within:text-gray-400 flex items-center">
-          <a-textarea v-model:value="message" :auto-size="{ minRows: 2, maxRows: 5 }" placeholder="请输入消息..."
-            class="appearance-none pl-10 py-2 w-full bg-white border border-gray-300 rounded-full text-sm placeholder-gray-800 focus:outline-none focus:border-blue-500 focus:border-blue-500 focus:shadow-outline-blue" />
-          <span class="absolute inset-y-0 right-0 bottom-8 pr-6 flex items-end">
-            <a-button shape="round" type="primary" @click="sendMessage">发送</a-button>
-          </span>
-        </div>
-
-      </footer>
     </div>
     <a-modal v-model:visible="visible" title="更新API_KEY" @ok="updateApiKey" okText="更新" cancelText="关闭">
       <a-alert message="API_KEY往往是sk-开头的字符串" type="info" />
@@ -160,16 +141,6 @@ html {
 }
 
 #main {
-  flex-grow: 2;
-}
-
-.replay {
-  float: left;
-  clear: both;
-}
-
-.send {
-  float: right;
-  clear: both;
+  flex-grow: 1;
 }
 </style>
